@@ -35,6 +35,8 @@
 
 #endif
 
+int timestamp = 0;
+
 /**
  * Cache block information.
  *
@@ -110,17 +112,16 @@ avdc_dbg_log(avdark_cache_t *self, const char *msg, ...) {
     }
 }
 
-int lru(avdark_cache_t *self) {
-
-
-    fprintf(stderr, "\nLRU \n");
+void print_cache_state(avdark_cache_t *self) {
+    fprintf(stderr, "\n\nCache status: \n");
     for (int j = 0; j < 8; ++j) {
         fprintf(stderr, "Cacheline %d (Valid: %d) - timestamp: %d \n", j,
                 self->lines[j].valid, self->lines[j]
-        .timestamp);
+                        .timestamp);
     }
+}
 
-
+int lru(avdark_cache_t *self) {
     // find out which cacheline has this timestamp and return its index
     int smallest = 999;
     int cacheline_with_smallest_timestamp = 0;
@@ -131,21 +132,24 @@ int lru(avdark_cache_t *self) {
         }
     }
 
-    fprintf(stderr, "Result: cacheline: %d \n\n", cacheline_with_smallest_timestamp);
+    fprintf(stderr, "LRU Result: cacheline: %d\n", cacheline_with_smallest_timestamp);
     return cacheline_with_smallest_timestamp;
 }
 
 
 void
 avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
-    /* TODO: Update this function */
+    print_cache_state(self);
+
+
     avdc_tag_t tag = tag_from_pa(self, pa);
     int index = index_from_pa(self, pa);
     int hit, hit2;
 
+    int index2 = index + self->number_of_sets;
 
     hit = self->lines[index].valid && self->lines[index].tag == tag;
-    hit2 = self->lines[(tag * 4) + index].valid && self->lines[(tag * 4) + index].tag == tag;
+    hit2 = self->lines[index2].valid && self->lines[index2].tag == tag;
 
 
     fprintf(stderr, "Accessing byte with tag %d, byte number: %d, set %d/%d, hit %d, hit2 %d \n",
@@ -166,14 +170,11 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
             self->lines[position].valid = 1;
             self->lines[position].tag = tag;
 
-            // set the timestamp of the newly added cacheline to 0
-            self->lines[position].timestamp = 0;
-
 
             // increase the timestamp of all valid cachelines
             for (int i = 0; i < 8; i++) {
                 if (self->lines[i].valid) {
-                    self->lines[position].timestamp++;
+                    self->lines[position].timestamp = timestamp;
                 }
             }
         }
@@ -186,7 +187,7 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
             avdc_dbg_log(self, "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
                          (unsigned long) pa, (unsigned long) tag, index, hit);
             self->stat_data_read += 1;
-            if (!hit)
+            if (!hit || !hit2)
                 self->stat_data_read_miss += 1;
             break;
 
@@ -194,10 +195,12 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
             avdc_dbg_log(self, "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
                          (unsigned long) pa, (unsigned long) tag, index, hit);
             self->stat_data_write += 1;
-            if (!hit)
+            if (!hit || !hit2)
                 self->stat_data_write_miss += 1;
             break;
     }
+
+    timestamp++;
 }
 
 void

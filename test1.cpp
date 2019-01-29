@@ -46,6 +46,8 @@ test_aliasing(avdark_cache_t *cache, avdc_pa_t alias_offset, avdc_access_type_t 
                 TEST_SIMPLE_STAT();
         }
 
+        // 4 sett, 2 linjer i hver
+
         fprintf(stderr, "Passed part 1 of test 1\n");
 
         /* Now, access all the ways again, we shouldn't get any misses */
@@ -54,6 +56,8 @@ test_aliasing(avdark_cache_t *cache, avdc_pa_t alias_offset, avdc_access_type_t 
                 hits++;
                 TEST_SIMPLE_STAT();
         }
+
+        fprintf(stderr, "end loop \n");
 
         /* Access 1 cache line that aliases into set 0 and replaces
          * a line that we just loaded */
