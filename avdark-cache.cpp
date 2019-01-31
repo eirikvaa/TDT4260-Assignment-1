@@ -117,7 +117,8 @@ avdc_dbg_log(avdark_cache_t *self, const char *msg, ...) {
 
 void print_cache_state(avdark_cache_t *self) {
     fprintf(stderr, "\n\nCache status: \n");
-    for (int j = 0; j < 8; ++j) {
+    int lines = self->assoc * self->number_of_sets;
+    for (int j = 0; j < lines; ++j) {
         fprintf(stderr, "Cacheline %d (Valid: %d) - timestamp: %d \n", j,
                 self->lines[j].valid, self->lines[j]
                         .timestamp);
@@ -126,11 +127,12 @@ void print_cache_state(avdark_cache_t *self) {
 
 int lru(avdark_cache_t *self) {
     // find out which cacheline has this timestamp and return its index
-    int smallest = 999;
-    int cacheline_with_smallest_timestamp = 0;
-    for (int i = 0; i < 8; i += 4) {
-        if (self->lines[i].timestamp < smallest) {
-            smallest = self->lines[i].timestamp;
+    int smallest_timestamp = 999;
+    int cacheline_with_smallest_timestamp = self->lines[0].timestamp;
+    int lines = self->assoc * self->number_of_sets;
+    for (int i = 0; i < lines; i += self->number_of_sets) {
+        if (self->lines[i].timestamp < smallest_timestamp) {
+            smallest_timestamp = self->lines[i].timestamp;
             cacheline_with_smallest_timestamp = i;
         }
     }
@@ -149,7 +151,6 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
 
     if (self->assoc == 1) {
         direct_mapped_cache(self, pa, type, tag, index);
-
     } else {
         int index2 = index + self->number_of_sets;
         int hit = self->lines[index].valid && self->lines[index].tag == tag;
@@ -161,7 +162,7 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
                 tag, pa,
                 index, self->number_of_sets, hit, hit2);
 
-        if (!hit || !hit2) {
+        if (!hit && !hit2) {
 
             int position = lru(self);
 
@@ -172,7 +173,8 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
 
 
             // increase the timestamp of all valid cachelines
-            for (int i = 0; i < 8; i++) {
+            int lines = self->assoc * self->number_of_sets;
+            for (int i = 0; i < lines; i++) {
                 if (self->lines[i].valid) {
                     self->lines[position].timestamp = timestamp;
                 }
@@ -210,7 +212,8 @@ avdc_flush_cache(avdark_cache_t *self) {
 
     fprintf(stderr, "cache flushed! \n\n");
     /* TODO: Update this function */
-    for (int i = 0; i < 8; i++) {
+    int lines = self->assoc * self->number_of_sets;
+    for (int i = 0; i < lines; i++) {
         self->lines[i].valid = 0;
         self->lines[i].tag = 0;
         self->lines[i].timestamp = 0;
