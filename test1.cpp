@@ -108,18 +108,24 @@ main(int argc, char *argv[])
         avdc_flush_cache(cache);
         test_aliasing(cache, 512, AVDC_WRITE);
 
+        fprintf(stderr, "lol ");
+
 
         avdc_resize(cache, 256, 64, 1);
         avdc_print_info(cache);
 
+        fprintf(stderr, "lol2\n");
+
         printf("Aliasing [read]\n");
         test_aliasing(cache, 256, AVDC_READ);
+
+        fprintf(stderr, "lol3\n");
         printf("Aliasing [write]\n");
         avdc_flush_cache(cache);
         test_aliasing(cache, 256, AVDC_WRITE);
 
 
-        printf("Switching to assoc 2, assuming LRU\n");
+        fprintf(stderr, "Switching to assoc 2, assuming LRU\n");
 
         avdc_resize(cache, 512, 64, 2);
         avdc_print_info(cache);
@@ -133,7 +139,7 @@ main(int argc, char *argv[])
 
         avdc_delete(cache);
 
-        printf("%s done.\n", argv[0]);
+        fprintf(stderr, "%s done.\n", argv[0]);
         return 0;
 }
 

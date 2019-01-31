@@ -61,6 +61,9 @@ tag_from_pa(avdark_cache_t *self, avdc_pa_t pa) {
     return pa >> self->tag_shift;
 }
 
+void direct_mapped_cache(avdark_cache_t *self, const avdc_pa_t &pa, const avdc_access_type_t &type,
+                         const avdc_tag_t &tag, int index);
+
 /**
  * Calculate the cache line index from a physical address.
  *
@@ -141,27 +144,24 @@ void
 avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
     print_cache_state(self);
 
-
     avdc_tag_t tag = tag_from_pa(self, pa);
     int index = index_from_pa(self, pa);
-    int hit, hit2;
 
-    int index2 = index + self->number_of_sets;
+    if (self->assoc == 1) {
+        direct_mapped_cache(self, pa, type, tag, index);
 
-    hit = self->lines[index].valid && self->lines[index].tag == tag;
-    hit2 = self->lines[index2].valid && self->lines[index2].tag == tag;
+    } else {
+        int index2 = index + self->number_of_sets;
+        int hit = self->lines[index].valid && self->lines[index].tag == tag;
+        int hit2 = self->lines[index2].valid && self->lines[index2].tag == tag;
 
 
-    fprintf(stderr, "Accessing byte with tag %d, byte number: %d, set %d/%d, hit %d, hit2 %d \n",
-            tag, pa,
-            index, self->number_of_sets, hit, hit2);
+        fprintf(stderr,
+                "Accessing byte with tag %d, byte number: %d, set %d/%d, hit %d, hit2 %d \n",
+                tag, pa,
+                index, self->number_of_sets, hit, hit2);
 
-    if (!hit || !hit2) {
-        // simulate loading the cacheline into this position
-        if (self->assoc == 1) {
-            self->lines[index].valid = 1;
-            self->lines[index].tag = tag;
-        } else {
+        if (!hit || !hit2) {
 
             int position = lru(self);
 
@@ -180,25 +180,27 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
         }
 
 
+        switch (type) {
+            case AVDC_READ: /* Read accesses */
+                avdc_dbg_log(self,
+                             "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
+                             (unsigned long) pa, (unsigned long) tag, index, hit);
+                self->stat_data_read += 1;
+                if (!hit && !hit2)
+                    self->stat_data_read_miss += 1;
+                break;
+
+            case AVDC_WRITE: /* Write accesses */
+                avdc_dbg_log(self,
+                             "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
+                             (unsigned long) pa, (unsigned long) tag, index, hit);
+                self->stat_data_write += 1;
+                if (!hit && !hit2)
+                    self->stat_data_write_miss += 1;
+                break;
+        }
     }
 
-    switch (type) {
-        case AVDC_READ: /* Read accesses */
-            avdc_dbg_log(self, "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                         (unsigned long) pa, (unsigned long) tag, index, hit);
-            self->stat_data_read += 1;
-            if (!hit || !hit2)
-                self->stat_data_read_miss += 1;
-            break;
-
-        case AVDC_WRITE: /* Write accesses */
-            avdc_dbg_log(self, "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                         (unsigned long) pa, (unsigned long) tag, index, hit);
-            self->stat_data_write += 1;
-            if (!hit || !hit2)
-                self->stat_data_write_miss += 1;
-            break;
-    }
 
     timestamp++;
 }
@@ -311,6 +313,37 @@ avdc_delete(avdark_cache_t *self) {
         AVDC_FREE(self->lines);
 
     AVDC_FREE(self);
+}
+
+void direct_mapped_cache(avdark_cache_t *self, const avdc_pa_t &pa, const avdc_access_type_t &type,
+                         const avdc_tag_t &tag, int index) {
+    int hit = self->lines[index].valid && self->lines[index].tag == tag;
+
+    if (!hit) {
+        self->lines[index].valid = 1;
+        self->lines[index].tag = tag;
+    }
+
+
+    switch (type) {
+        case AVDC_READ: /* Read accesses */
+            avdc_dbg_log(self,
+                         "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
+                         (unsigned long) pa, (unsigned long) tag, index, hit);
+            self->stat_data_read += 1;
+            if (!hit)
+                self->stat_data_read_miss += 1;
+            break;
+
+        case AVDC_WRITE: /* Write accesses */
+            avdc_dbg_log(self,
+                         "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
+                         (unsigned long) pa, (unsigned long) tag, index, hit);
+            self->stat_data_write += 1;
+            if (!hit)
+                self->stat_data_write_miss += 1;
+            break;
+    }
 }
 
 /*
