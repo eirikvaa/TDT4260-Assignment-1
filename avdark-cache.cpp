@@ -141,6 +141,60 @@ int lru(avdark_cache_t *self) {
     return cacheline_with_smallest_timestamp;
 }
 
+void configure_hits_array(int hits[], int associativity) {
+    for (int i = 0; i < associativity; i++) {
+        hits[i] = -1;
+    }
+}
+
+int all_misses(int hits[], int associativity) {
+    bool all_misses = true;
+
+    for (int i = 0; i < associativity; i++) {
+        if (hits[i] == 1) {
+            all_misses = false;
+        }
+    }
+
+    return all_misses;
+}
+
+void check_hits_in_sets(avdark_cache_t *self, int hits[], int indices[], int associativity, const avdc_tag_t tag) {
+    for (int i = 0; i < associativity; i++) {
+        int _index = indices[i];
+        hits[i] = self->lines[_index].valid && self->lines[_index].tag == tag;
+    }
+}
+
+void fill_cache_line(avdark_cache_t *self, int associativity, int indices[], const avdc_tag_t tag, int timestamp) {
+    int position = associativity == 1 ? indices[0] : lru(self);
+    self->lines[position].valid = 1;
+    self->lines[position].tag = tag;
+    self->lines[position].timestamp = timestamp;
+}
+
+void record_statistics(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type, int only_misses, int indices[],
+                       int hits[], const avdc_tag_t tag) {
+    switch (type) {
+        case AVDC_READ:
+            avdc_dbg_log(self,
+                         "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
+                         (unsigned long) pa, (unsigned long) tag, indices[0], hits[0]);
+            self->stat_data_read += 1;
+            if (only_misses)
+                self->stat_data_read_miss += 1;
+            break;
+
+        case AVDC_WRITE:
+            avdc_dbg_log(self,
+                         "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
+                         (unsigned long) pa, (unsigned long) tag, indices[0], hits[0]);
+            self->stat_data_write += 1;
+            if (only_misses)
+                self->stat_data_write_miss += 1;
+            break;
+    }
+}
 
 void
 avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
@@ -148,61 +202,20 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
 
     avdc_tag_t tag = tag_from_pa(self, pa);
     int index = index_from_pa(self, pa);
+    int associativity = (int) self->assoc;
 
-    if (self->assoc == 1) {
-        direct_mapped_cache(self, pa, type, tag, index);
-    } else {
-        int index2 = index + self->number_of_sets;
-        int hit = self->lines[index].valid && self->lines[index].tag == tag;
-        int hit2 = self->lines[index2].valid && self->lines[index2].tag == tag;
+    int indices[associativity] = {index, index + self->number_of_sets};
+    int hits[associativity] = {};
 
+    configure_hits_array(hits, associativity);
+    check_hits_in_sets(self, hits, indices, associativity, tag);
+    int only_misses = all_misses(hits, associativity);
 
-        fprintf(stderr,
-                "Accessing byte with tag %d, byte number: %d, set %d/%d, hit %d, hit2 %d \n",
-                tag, pa,
-                index, self->number_of_sets, hit, hit2);
-
-        if (!hit && !hit2) {
-
-            int position = lru(self);
-
-            fprintf(stderr, "Loading cacheline into position %d \n", position);
-
-            self->lines[position].valid = 1;
-            self->lines[position].tag = tag;
-
-
-            // increase the timestamp of all valid cachelines
-            int lines = self->assoc * self->number_of_sets;
-            for (int i = 0; i < lines; i++) {
-                if (self->lines[i].valid) {
-                    self->lines[position].timestamp = timestamp;
-                }
-            }
-        }
-
-
-        switch (type) {
-            case AVDC_READ: /* Read accesses */
-                avdc_dbg_log(self,
-                             "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                             (unsigned long) pa, (unsigned long) tag, index, hit);
-                self->stat_data_read += 1;
-                if (!hit && !hit2)
-                    self->stat_data_read_miss += 1;
-                break;
-
-            case AVDC_WRITE: /* Write accesses */
-                avdc_dbg_log(self,
-                             "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                             (unsigned long) pa, (unsigned long) tag, index, hit);
-                self->stat_data_write += 1;
-                if (!hit && !hit2)
-                    self->stat_data_write_miss += 1;
-                break;
-        }
+    if (only_misses == 1) {
+        fill_cache_line(self, associativity, indices, tag, timestamp);
     }
 
+    record_statistics(self, pa, type, only_misses, indices, hits, tag);
 
     timestamp++;
 }
@@ -211,7 +224,6 @@ void
 avdc_flush_cache(avdark_cache_t *self) {
 
     fprintf(stderr, "cache flushed! \n\n");
-    /* TODO: Update this function */
     int lines = self->assoc * self->number_of_sets;
     for (int i = 0; i < lines; i++) {
         self->lines[i].valid = 0;
@@ -316,37 +328,6 @@ avdc_delete(avdark_cache_t *self) {
         AVDC_FREE(self->lines);
 
     AVDC_FREE(self);
-}
-
-void direct_mapped_cache(avdark_cache_t *self, const avdc_pa_t &pa, const avdc_access_type_t &type,
-                         const avdc_tag_t &tag, int index) {
-    int hit = self->lines[index].valid && self->lines[index].tag == tag;
-
-    if (!hit) {
-        self->lines[index].valid = 1;
-        self->lines[index].tag = tag;
-    }
-
-
-    switch (type) {
-        case AVDC_READ: /* Read accesses */
-            avdc_dbg_log(self,
-                         "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                         (unsigned long) pa, (unsigned long) tag, index, hit);
-            self->stat_data_read += 1;
-            if (!hit)
-                self->stat_data_read_miss += 1;
-            break;
-
-        case AVDC_WRITE: /* Write accesses */
-            avdc_dbg_log(self,
-                         "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                         (unsigned long) pa, (unsigned long) tag, index, hit);
-            self->stat_data_write += 1;
-            if (!hit)
-                self->stat_data_write_miss += 1;
-            break;
-    }
 }
 
 /*
