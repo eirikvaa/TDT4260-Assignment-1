@@ -125,12 +125,12 @@ void print_cache_state(avdark_cache_t *self) {
     }
 }
 
-int lru(avdark_cache_t *self) {
+int lru(avdark_cache_t *self, int index) {
     // find out which cacheline has this timestamp and return its index
-    int smallest_timestamp = 999;
-    int cacheline = self->lines[0].timestamp;
+    int smallest_timestamp = 65535;
+    int cacheline = self->lines[index].timestamp;
     int lines = self->assoc * self->number_of_sets;
-    for (int i = 0; i < lines; i += self->number_of_sets) {
+    for (int i = index; i < lines; i += self->number_of_sets) {
         if (self->lines[i].timestamp < smallest_timestamp) {
             smallest_timestamp = self->lines[i].timestamp;
             cacheline = i;
@@ -166,8 +166,9 @@ void check_hits_in_sets(avdark_cache_t *self, int hits[], int indices[], int ass
     }
 }
 
-void fill_cache_line(avdark_cache_t *self, int associativity, int indices[], const avdc_tag_t tag, int timestamp) {
-    int position = associativity == 1 ? indices[0] : lru(self);
+void fill_cache_line(avdark_cache_t *self, int associativity, int indices[], const avdc_tag_t tag, int timestamp,
+                     int index) {
+    int position = associativity == 1 ? indices[0] : lru(self, index);
     self->lines[position].valid = 1;
     self->lines[position].tag = tag;
     self->lines[position].timestamp = timestamp;
@@ -210,7 +211,7 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
     int only_misses = all_misses(hits, associativity);
 
     if (only_misses == 1) {
-        fill_cache_line(self, associativity, indices, tag, timestamp);
+        fill_cache_line(self, associativity, indices, tag, timestamp, index);
     }
 
     record_statistics(self, pa, type, only_misses, indices, hits, tag);
