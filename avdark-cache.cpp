@@ -141,13 +141,7 @@ int lru(avdark_cache_t *self, int index) {
     return cacheline;
 }
 
-void configure_hits_array(int hits[], int associativity) {
-    for (int i = 0; i < associativity; i++) {
-        hits[i] = -1;
-    }
-}
-
-int all_misses(int hits[], int associativity) {
+bool all_misses(int hits[], int associativity) {
     bool all_misses = true;
 
     for (int i = 0; i < associativity; i++) {
@@ -159,28 +153,29 @@ int all_misses(int hits[], int associativity) {
     return all_misses;
 }
 
-void check_hits_in_sets(avdark_cache_t *self, int hits[], int indices[], int associativity, const avdc_tag_t tag) {
+void check_hits_in_sets(avdark_cache_t *self, int hits[], int index, int associativity, const avdc_tag_t tag) {
+    int _index = index;
     for (int i = 0; i < associativity; i++) {
-        int _index = indices[i];
         hits[i] = self->lines[_index].valid && self->lines[_index].tag == tag;
+
+        _index += self->number_of_sets;
     }
 }
 
-void fill_cache_line(avdark_cache_t *self, int associativity, int indices[], const avdc_tag_t tag, int timestamp,
-                     int index) {
-    int position = associativity == 1 ? indices[0] : lru(self, index);
+void fill_cache_line(avdark_cache_t *self, int associativity, int index, const avdc_tag_t tag, int timestamp) {
+    int position = associativity == 1 ? index : lru(self, index);
     self->lines[position].valid = 1;
     self->lines[position].tag = tag;
     self->lines[position].timestamp = timestamp;
 }
 
-void record_statistics(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type, int only_misses, int indices[],
+void record_statistics(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type, int only_misses, int index,
                        int hits[], const avdc_tag_t tag) {
     switch (type) {
         case AVDC_READ:
             avdc_dbg_log(self,
                          "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                         (unsigned long) pa, (unsigned long) tag, indices[0], hits[0]);
+                         (unsigned long) pa, (unsigned long) tag, index, hits[0]);
             self->stat_data_read += 1;
             if (only_misses)
                 self->stat_data_read_miss += 1;
@@ -189,7 +184,7 @@ void record_statistics(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t ty
         case AVDC_WRITE:
             avdc_dbg_log(self,
                          "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                         (unsigned long) pa, (unsigned long) tag, indices[0], hits[0]);
+                         (unsigned long) pa, (unsigned long) tag, index, hits[0]);
             self->stat_data_write += 1;
             if (only_misses)
                 self->stat_data_write_miss += 1;
@@ -202,19 +197,16 @@ avdc_access(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t type) {
     avdc_tag_t tag = tag_from_pa(self, pa);
     int index = index_from_pa(self, pa);
     int associativity = (int) self->assoc;
+    int hits[associativity] = {-1};
 
-    int indices[associativity] = {index, index + self->number_of_sets};
-    int hits[associativity] = {};
+    check_hits_in_sets(self, hits, index, associativity, tag);
+    bool only_misses = all_misses(hits, associativity);
 
-    configure_hits_array(hits, associativity);
-    check_hits_in_sets(self, hits, indices, associativity, tag);
-    int only_misses = all_misses(hits, associativity);
-
-    if (only_misses == 1) {
-        fill_cache_line(self, associativity, indices, tag, timestamp, index);
+    if (only_misses) {
+        fill_cache_line(self, associativity, index, tag, timestamp);
     }
 
-    record_statistics(self, pa, type, only_misses, indices, hits, tag);
+    record_statistics(self, pa, type, only_misses, index, hits, tag);
 
     timestamp++;
 }
