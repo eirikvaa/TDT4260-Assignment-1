@@ -127,7 +127,7 @@ void print_cache_state(avdark_cache_t *self) {
 
 int lru(avdark_cache_t *self, int index) {
     // find out which cacheline has this timestamp and return its index
-    int smallest_timestamp = 65535;
+    long int smallest_timestamp = 4294967296;
     int cacheline = self->lines[index].timestamp;
     int lines = self->assoc * self->number_of_sets;
     for (int i = index; i < lines; i += self->number_of_sets) {
@@ -215,10 +215,8 @@ void
 avdc_flush_cache(avdark_cache_t *self) {
 
     fprintf(stderr, "cache flushed! \n\n");
-    int lines = self->assoc * self->number_of_sets;
-    fprintf(stderr, "%d\n", lines);
+    int lines = self->size / self->block_size;
     for (int i = 0; i < lines; i++) {
-        if (i % 1000 == 0) fprintf(stderr, "i = %d\n", i);
         self->lines[i].valid = 0;
         self->lines[i].tag = 0;
         self->lines[i].timestamp = 0;
