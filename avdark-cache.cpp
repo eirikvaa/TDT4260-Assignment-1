@@ -216,7 +216,9 @@ avdc_flush_cache(avdark_cache_t *self) {
 
     fprintf(stderr, "cache flushed! \n\n");
     int lines = self->assoc * self->number_of_sets;
+    fprintf(stderr, "%d\n", lines);
     for (int i = 0; i < lines; i++) {
+        if (i % 1000 == 0) fprintf(stderr, "i = %d\n", i);
         self->lines[i].valid = 0;
         self->lines[i].tag = 0;
         self->lines[i].timestamp = 0;
@@ -258,7 +260,7 @@ avdc_resize(avdark_cache_t *self,
     /* HINT: If you change this, you may have to update
      * avdc_delete() to reflect changes to how thie self->lines
      * array is allocated. */
-    self->lines = AVDC_MALLOC(self->number_of_sets, avdc_cache_line_t);
+    self->lines = AVDC_MALLOC(self->number_of_sets * self->assoc, avdc_cache_line_t);
 
     /* Flush the cache, this initializes the tag array to a known state */
     avdc_flush_cache(self);
