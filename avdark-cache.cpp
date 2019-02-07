@@ -137,7 +137,7 @@ int lru(avdark_cache_t *self, int index) {
         }
     }
 
-    fprintf(stderr, "LRU Result: cacheline: %d\n", cacheline);
+    //fprintf(stderr, "LRU Result: cacheline: %d\n", cacheline);
     return cacheline;
 }
 
@@ -173,18 +173,18 @@ void record_statistics(avdark_cache_t *self, avdc_pa_t pa, avdc_access_type_t ty
                        int hits[], const avdc_tag_t tag) {
     switch (type) {
         case AVDC_READ:
-            avdc_dbg_log(self,
+            /*avdc_dbg_log(self,
                          "read: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                         (unsigned long) pa, (unsigned long) tag, index, hits[0]);
+                         (unsigned long) pa, (unsigned long) tag, index, hits[0]);*/
             self->stat_data_read += 1;
             if (only_misses)
                 self->stat_data_read_miss += 1;
             break;
 
         case AVDC_WRITE:
-            avdc_dbg_log(self,
+            /*avdc_dbg_log(self,
                          "write: pa: 0x%.16lx, tag: 0x%.16lx, index: %d, hit: %d\n",
-                         (unsigned long) pa, (unsigned long) tag, index, hits[0]);
+                         (unsigned long) pa, (unsigned long) tag, index, hits[0]);*/
             self->stat_data_write += 1;
             if (only_misses)
                 self->stat_data_write_miss += 1;
